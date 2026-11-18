@@ -6,6 +6,7 @@ let activeTag = "tutti";
 let currentPage = 1;
 const ARTICLES_PER_PAGE = 8;
 const CONTENT_DIRECTORY_URL = new URL("../content/", document.currentScript.src);
+const ARTICLES_INDEX_URL = new URL("../content/articles.json", document.currentScript.src);
 
 // Icona SVG geometrica ispirata all'indicatore nello screenshot
 const ringIconSVG = `
@@ -46,24 +47,16 @@ function parseArticle(source, filename) {
 
 async function loadArticles() {
   try {
-    const directoryResponse = await fetch(CONTENT_DIRECTORY_URL);
-    if (!directoryResponse.ok) throw new Error("Impossibile elencare la cartella content");
+    const indexResponse = await fetch(ARTICLES_INDEX_URL);
+    if (!indexResponse.ok) throw new Error("Impossibile caricare l'indice degli articoli");
 
-    const directoryDocument = new DOMParser().parseFromString(
-      await directoryResponse.text(),
-      "text/html"
-    );
-    const articleFiles = Array.from(directoryDocument.querySelectorAll("a[href]"))
-      .map(link => new URL(link.getAttribute("href"), CONTENT_DIRECTORY_URL))
-      .filter(url => url.origin === CONTENT_DIRECTORY_URL.origin
-        && url.pathname.startsWith(CONTENT_DIRECTORY_URL.pathname))
-      .map(url => ({
-        url,
-        filename: decodeURIComponent(url.pathname.slice(CONTENT_DIRECTORY_URL.pathname.length))
-      }))
-      .filter(file => file.filename && !file.filename.includes("/") && /\.md$/i.test(file.filename));
+    const articleFiles = await indexResponse.json();
+    if (!Array.isArray(articleFiles) || articleFiles.some(filename => typeof filename !== "string" || !/^[^/]+\.md$/i.test(filename))) {
+      throw new Error("Indice degli articoli non valido");
+    }
 
-    articles = await Promise.all(articleFiles.map(async ({ filename, url }) => {
+    articles = await Promise.all(articleFiles.map(async filename => {
+      const url = new URL(encodeURIComponent(filename), CONTENT_DIRECTORY_URL);
       const articleResponse = await fetch(url);
       if (!articleResponse.ok) throw new Error(`Impossibile caricare ${filename}`);
       return parseArticle(await articleResponse.text(), filename);
